@@ -6,7 +6,7 @@ import pytz
 
 # Bot token from BotFather
 TOKEN = "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE"
-AFFILIATE_MANAGER = "@xfAffiliateManager"  # Replace with actual handle
+AFFILIATE_MANAGER = "@xfAffiliateManger"  # Replace with actual handle
 
 # In-memory storage (resets on bot restart)
 users = {}  # Format: {user_id: {"joins": int, "balance": float, "username": str, "last_reset": datetime}}
@@ -63,7 +63,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users[user_id]["username"] = username
     
     # Generate unique affiliate link
-    affiliate_link = f"https://t.me/Affiliate_xforiumbot?start={user_id}"
+    affiliate_link = affiliate_link = f"https://t.me/xForium?start={user_id}"
     
     welcome_message = (
         f"Welcome to the bot!\n"
