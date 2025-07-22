@@ -6,7 +6,7 @@ import pytz
 
 # Bot token from BotFather
 TOKEN = "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE"
-AFFILIATE_MANAGER = "@xfAffiliateManger"  # Replace with actual handle
+AFFILIATE_MANAGER = "@xfAffliateManger"  # Replace with actual handle
 
 # In-memory storage (resets on bot restart)
 users = {}  # Format: {user_id: {"joins": int, "balance": float, "username": str, "last_reset": datetime}}
