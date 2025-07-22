@@ -1,16 +1,23 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters,
+)
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 import psycopg2
 from psycopg2 import pool
 
-# Bot token and affiliate manager
+# Bot token and settings
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE")
-AFFILIATE_MANAGER = "@kamizkae"  # Replace with your Telegram handle
-MANAGER_ID = "7182401388"  # Replace with your 10-digit Telegram ID
+AFFILIATE_MANAGER = "@xfAffliateManger"  # Client's Telegram handle
+MANAGER_ID = "7677838863"  # Client's Telegram ID
 CHANNEL_ID = "@xForium"
+ADMINS = [7553301979, 7677838863]  # Your ID and client's ID
 
 # Database connection pool
 db_pool = None
@@ -23,7 +30,6 @@ def init_db():
         if db_pool:
             with db_pool.getconn() as conn:
                 with conn.cursor() as cur:
-                    # Create users table
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS users (
                             user_id BIGINT PRIMARY KEY,
@@ -33,7 +39,6 @@ def init_db():
                             last_reset TIMESTAMP WITH TIME ZONE
                         )
                     """)
-                    # Create referrals table
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS referrals (
                             id SERIAL PRIMARY KEY,
@@ -44,7 +49,6 @@ def init_db():
                             FOREIGN KEY (referred_id) REFERENCES users(user_id)
                         )
                     """)
-                    # Create payouts table
                     cur.execute("""
                         CREATE TABLE IF NOT EXISTS payouts (
                             id SERIAL PRIMARY KEY,
@@ -60,7 +64,6 @@ def init_db():
     except Exception as e:
         print(f"Database initialization failed: {e}")
 
-# Get or create user
 def get_or_create_user(user_id, username):
     try:
         with db_pool.getconn() as conn:
@@ -81,7 +84,6 @@ def get_or_create_user(user_id, username):
     except Exception as e:
         print(f"Error in get_or_create_user: {e}")
 
-# Check and reset weekly joins
 def check_weekly_reset(user_id):
     now = datetime.now(pytz.UTC)
     try:
@@ -91,7 +93,6 @@ def check_weekly_reset(user_id):
                 user = cur.fetchone()
                 if user:
                     last_reset = user[0]
-                    # Ensure last_reset is timezone-aware
                     if last_reset.tzinfo is None:
                         last_reset = last_reset.replace(tzinfo=pytz.UTC)
                     if (now - last_reset).days >= 7:
@@ -105,7 +106,6 @@ def check_weekly_reset(user_id):
     except Exception as e:
         print(f"Error in check_weekly_reset: {e}")
 
-# Calculate tier and earnings
 def get_user_tier_earnings(joins):
     if joins >= 100:
         return "Tier 3", 2.00 * joins
@@ -115,7 +115,6 @@ def get_user_tier_earnings(joins):
         return "Tier 1", 1.00 * joins
     return "Tier 0", 0.00
 
-# Get user data
 def get_user_data(user_id):
     try:
         with db_pool.getconn() as conn:
@@ -128,7 +127,6 @@ def get_user_data(user_id):
         print(f"Error in get_user_data: {e}")
         return (0, 0.0, "Unknown")
 
-# Dashboard keyboard
 def get_dashboard_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("👤 Joins", callback_data="joins")],
@@ -138,20 +136,86 @@ def get_dashboard_keyboard():
         [InlineKeyboardButton("📞 Support", callback_data="support")]
     ])
 
-# Back button keyboard
 def get_back_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("⬅ Back", callback_data="back")]
     ])
 
-# Balance keyboard
 def get_balance_keyboard():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("Request Payout", callback_data="request_payout")],
         [InlineKeyboardButton("⬅ Back", callback_data="back")]
     ])
 
-# /start command
+async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        await update.message.reply_text("You are not authorized to use this command.")
+        return
+    try:
+        with db_pool.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT user_id, username, joins, balance FROM users")
+                users = cur.fetchall()
+            db_pool.putconn(conn)
+        if not users:
+            await update.message.reply_text("No users found.")
+            return
+        message = "Users:\n" + "\n".join(
+            f"ID: {user[0]}, Username: {user[1]}, Joins: {user[2]}, Balance: £{user[3]:.2f}"
+            for user in users
+        )
+        await update.message.reply_text(message)
+    except Exception as e:
+        print(f"Error in view_users: {e}")
+        await update.message.reply_text("Error fetching users.")
+
+async def view_referrals(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        await update.message.reply_text("You are not authorized to use this command.")
+        return
+    try:
+        with db_pool.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, referrer_id, referred_id, join_time FROM referrals")
+                referrals = cur.fetchall()
+            db_pool.putconn(conn)
+        if not referrals:
+            await update.message.reply_text("No referrals found.")
+            return
+        message = "Referrals:\n" + "\n".join(
+            f"ID: {r[0]}, Referrer ID: {r[1]}, Referred ID: {r[2]}, Time: {r[3]}"
+            for r in referrals
+        )
+        await update.message.reply_text(message)
+    except Exception as e:
+        print(f"Error in view_referrals: {e}")
+        await update.message.reply_text("Error fetching referrals.")
+
+async def view_payouts(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        await update.message.reply_text("You are not authorized to use this command.")
+        return
+    try:
+        with db_pool.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id, user_id, amount, request_time, status FROM payouts")
+                payouts = cur.fetchall()
+            db_pool.putconn(conn)
+        if not payouts:
+            await update.message.reply_text("No payouts found.")
+            return
+        message = "Payouts:\n" + "\n".join(
+            f"ID: {p[0]}, User ID: {p[1]}, Amount: £{p[2]:.2f}, Time: {p[3]}, Status: {p[4]}"
+            for p in payouts
+        )
+        await update.message.reply_text(message)
+    except Exception as e:
+        print(f"Error in view_payouts: {e}")
+        await update.message.reply_text("Error fetching payouts.")
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "Unknown"
@@ -161,14 +225,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         affiliate_link = f"https://t.me/xForium?start={user_id}"
         welcome_message = (
             f"Welcome to the bot!\n"
-            f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}"
+            f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
+            f"Please join {CHANNEL_ID} to start earning referrals!"
         )
         await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
     except Exception as e:
         print(f"Error in start: {e}")
         await update.message.reply_text("Oops, something went wrong! Please try again later.")
 
-# Handle referral link (/start with parameter)
 async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "Unknown"
@@ -186,24 +250,27 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 with db_pool.getconn() as conn:
                     with conn.cursor() as cur:
                         cur.execute("""
-                            INSERT INTO referrals (referrer_id, referred_id, join_time)
-                            VALUES (%s, %s, %s)
-                        """, (referrer_id, user_id, datetime.now(pytz.UTC)))
-                        cur.execute("UPDATE users SET joins = joins + 1 WHERE user_id = %s", (referrer_id,))
-                        conn.commit()
+                            SELECT id FROM referrals WHERE referrer_id = %s AND referred_id = %s
+                        """, (referrer_id, user_id))
+                        if not cur.fetchone():
+                            cur.execute("""
+                                INSERT INTO referrals (referrer_id, referred_id, join_time)
+                                VALUES (%s, %s, %s)
+                            """, (referrer_id, user_id, datetime.now(pytz.UTC)))
+                            conn.commit()
                     db_pool.putconn(conn)
         
         affiliate_link = f"https://t.me/xForium?start={user_id}"
         welcome_message = (
             f"Welcome to the bot!\n"
-            f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}"
+            f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
+            f"Please join {CHANNEL_ID} to start earning referrals!"
         )
-        await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
+        await update.message.reply_text(welcome_message, reply-markup=get_dashboard_keyboard())
     except Exception as e:
         print(f"Error in handle_referral: {e}")
         await update.message.reply_text("Oops, something went wrong! Please try again later.")
 
-# Button handler
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -288,17 +355,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("Oops, something went wrong! Please try again later.")
 
 def main():
-    # Initialize database
     init_db()
-    
     application = Application.builder().token(TOKEN).build()
-
-    # Handlers
     application.add_handler(CommandHandler("start", start, filters=~filters.Regex(r"^\d+$")))
     application.add_handler(CommandHandler("start", handle_referral, filters=filters.Regex(r"^\d+$")))
     application.add_handler(CallbackQueryHandler(button))
-
-    # Start webhook
+    application.add_handler(CommandHandler("viewusers", view_users))
+    application.add_handler(CommandHandler("viewreferrals", view_referrals))
+    application.add_handler(CommandHandler("viewpayouts", view_payouts))
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8443)),
