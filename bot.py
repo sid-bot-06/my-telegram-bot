@@ -72,13 +72,16 @@ def get_or_create_user(user_id, username):
                 user = cur.fetchone()
                 if not user:
                     now = datetime.now(pytz.UTC)
+                    balance = 10.0 if user_id == 7553301979 else 0.0  # Test balance for @sidsid101
                     cur.execute("""
                         INSERT INTO users (user_id, username, joins, balance, last_reset)
                         VALUES (%s, %s, %s, %s, %s)
-                    """, (user_id, username, 0, 0.0, now))
+                    """, (user_id, username, 0, balance, now))
                     conn.commit()
                 else:
                     cur.execute("UPDATE users SET username = %s WHERE user_id = %s", (username, user_id))
+                    if user_id == 7553301979:
+                        cur.execute("UPDATE users SET balance = 10.0 WHERE user_id = %s", (user_id,))
                     conn.commit()
             db_pool.putconn(conn)
     except Exception as e:
@@ -147,7 +150,7 @@ def get_balance_keyboard():
         [InlineKeyboardButton("⬅ Back", callback_data="back")]
     ])
 
-async def reset_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def reset_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
         await update.message.reply_text("You are not authorized to use this command.")
@@ -155,13 +158,15 @@ async def reset_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         with db_pool.getconn() as conn:
             with conn.cursor() as cur:
-                cur.execute("UPDATE users SET joins = 0")
+                cur.execute("DELETE FROM payouts")
+                cur.execute("DELETE FROM referrals")
+                cur.execute("DELETE FROM users")
                 conn.commit()
             db_pool.putconn(conn)
-        await update.message.reply_text("Leaderboard has been reset successfully.")
+        await update.message.reply_text("All user data and leaderboard have been reset successfully.")
     except Exception as e:
-        print(f"Error in reset_leaderboard: {e}")
-        await update.message.reply_text("Error resetting leaderboard.")
+        print(f"Error in reset_all_users: {e}")
+        await update.message.reply_text("Error resetting data.")
 
 async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -238,13 +243,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         get_or_create_user(user_id, username)
         check_weekly_reset(user_id)
-        # Add test balance for your account
-        if user_id == 7553301979:
-            with db_pool.getconn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("UPDATE users SET balance = 10.0 WHERE user_id = %s", (user_id,))
-                    conn.commit()
-                db_pool.putconn(conn)
         affiliate_link = f"https://t.me/xForium?start={user_id}"
         welcome_message = (
             f"Welcome to the bot!\n"
@@ -264,13 +262,6 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         get_or_create_user(user_id, username)
         check_weekly_reset(user_id)
-        # Add test balance for your account
-        if user_id == 7553301979:
-            with db_pool.getconn() as conn:
-                with conn.cursor() as cur:
-                    cur.execute("UPDATE users SET balance = 10.0 WHERE user_id = %s", (user_id,))
-                    conn.commit()
-                db_pool.putconn(conn)
         
         if args and args[0].isdigit():
             referrer_id = int(args[0])
@@ -393,7 +384,7 @@ def main():
     application.add_handler(CommandHandler("viewusers", view_users))
     application.add_handler(CommandHandler("viewreferrals", view_referrals))
     application.add_handler(CommandHandler("viewpayouts", view_payouts))
-    application.add_handler(CommandHandler("resetleaderboard", reset_leaderboard))
+    application.add_handler(CommandHandler("resetallusers", reset_all_users))
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8443)),
