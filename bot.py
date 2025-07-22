@@ -15,7 +15,7 @@ from psycopg2 import pool
 # Bot token and settings
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE")
 AFFILIATE_MANAGER = "@xfAffliateManger"  # Client's Telegram handle for support
-MANAGER_ID = "7553301979"  # Your Telegram ID for payout notifications
+MANAGER_ID = "7677838863"  # Client's Telegram ID for payout notifications
 CHANNEL_ID = "@xForium"
 ADMINS = [7553301979, 7677838863]  # Your ID and client's ID
 
