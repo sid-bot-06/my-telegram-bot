@@ -3,13 +3,112 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 import os
 from datetime import datetime, timedelta
 import pytz
+import psycopg2
+from psycopg2 import pool
 
-# Bot token from BotFather
-TOKEN = "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE"
-AFFILIATE_MANAGER = "@xfAffliateManger"  # Replace with actual handle
+# Bot token and affiliate manager
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE")
+AFFILIATE_MANAGER = "@kamizkae"  # Replace with your Telegram handle (e.g., @SuperCoolManager)
+MANAGER_ID = "7182401388"  # Replace with your Telegram ID (e.g., 987654321)
+CHANNEL_ID = "@xForium"
 
-# In-memory storage (resets on bot restart)
-users = {}  # Format: {user_id: {"joins": int, "balance": float, "username": str, "last_reset": datetime}}
+# Database connection pool
+db_pool = None
+
+def init_db():
+    global db_pool
+    db_url = os.getenv("DATABASE_URL")
+    db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, db_url)
+    if db_pool:
+        with db_pool.getconn() as conn:
+            with conn.cursor() as cur:
+                # Create users table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS users (
+                        user_id BIGINT PRIMARY KEY,
+                        username TEXT,
+                        joins INTEGER DEFAULT 0,
+                        balance FLOAT DEFAULT 0.0,
+                        last_reset TIMESTAMP
+                    )
+                """)
+                # Create referrals table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS referrals (
+                        id SERIAL PRIMARY KEY,
+                        referrer_id BIGINT,
+                        referred_id BIGINT,
+                        join_time TIMESTAMP,
+                        FOREIGN KEY (referrer_id) REFERENCES users(user_id),
+                        FOREIGN KEY (referred_id) REFERENCES users(user_id)
+                    )
+                """)
+                # Create payouts table
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS payouts (
+                        id SERIAL PRIMARY KEY,
+                        user_id BIGINT,
+                        amount FLOAT,
+                        request_time TIMESTAMP,
+                        status TEXT DEFAULT 'Pending',
+                        FOREIGN KEY (user_id) REFERENCES users(user_id)
+                    )
+                """)
+                conn.commit()
+            db_pool.putconn(conn)
+
+# Get or create user
+def get_or_create_user(user_id, username):
+    with db_pool.getconn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE user_id = %s", (user_id,))
+            user = cur.fetchone()
+            if not user:
+                now = datetime.now(pytz.UTC)
+                cur.execute("""
+                    INSERT INTO users (user_id, username, joins, balance, last_reset)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (user_id, username, 0, 0.0, now))
+                conn.commit()
+            else:
+                cur.execute("UPDATE users SET username = %s WHERE user_id = %s", (username, user_id))
+                conn.commit()
+        db_pool.putconn(conn)
+
+# Check and reset weekly joins
+def check_weekly_reset(user_id):
+    now = datetime.now(pytz.UTC)
+    with db_pool.getconn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT last_reset, joins, balance FROM users WHERE user_id = %s", (user_id,))
+            user = cur.fetchone()
+            if user and (now - user[0]).days >= 7:
+                tier, earnings = get_user_tier_earnings(user[1])
+                new_balance = user[2] + earnings
+                cur.execute("""
+                    UPDATE users SET joins = 0, balance = %s, last_reset = %s WHERE user_id = %s
+                """, (new_balance, now, user_id))
+                conn.commit()
+        db_pool.putconn(conn)
+
+# Calculate tier and earnings
+def get_user_tier_earnings(joins):
+    if joins >= 100:
+        return "Tier 3", 2.00 * joins
+    elif joins >= 50:
+        return "Tier 2", 1.50 * joins
+    elif joins >= 25:
+        return "Tier 1", 1.00 * joins
+    return "Tier 0", 0.00
+
+# Get user data
+def get_user_data(user_id):
+    with db_pool.getconn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT joins, balance, username FROM users WHERE user_id = %s", (user_id,))
+            user = cur.fetchone()
+        db_pool.putconn(conn)
+    return user or (0, 0.0, "Unknown")
 
 # Dashboard keyboard
 def get_dashboard_keyboard():
@@ -34,40 +133,17 @@ def get_balance_keyboard():
         [InlineKeyboardButton("⬅ Back", callback_data="back")]
     ])
 
-# Check and reset weekly joins
-def check_weekly_reset(user_id):
-    now = datetime.now(pytz.UTC)
-    if user_id not in users:
-        users[user_id] = {"joins": 0, "balance": 0.0, "username": "", "last_reset": now}
-    else:
-        last_reset = users[user_id]["last_reset"]
-        if (now - last_reset).days >= 7:
-            users[user_id]["joins"] = 0
-            users[user_id]["last_reset"] = now
-
-# Calculate tier and earnings
-def get_user_tier_earnings(joins):
-    if joins >= 100:
-        return "Tier 3", 2.00 * joins
-    elif joins >= 50:
-        return "Tier 2", 1.50 * joins
-    elif joins >= 25:
-        return "Tier 1", 1.00 * joins
-    return "Tier 0", 0.00
-
 # /start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or "Unknown"
+    get_or_create_user(user_id, username)
     check_weekly_reset(user_id)
-    users[user_id]["username"] = username
     
-    # Generate unique affiliate link
-    affiliate_link = affiliate_link = f"https://t.me/xForium?start={user_id}"
-    
+    affiliate_link = f"https://t.me/xForium?start={user_id}"
     welcome_message = (
         f"Welcome to the bot!\n"
-        f"Your personal affiliate link: {affiliate_link}"
+        f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}"
     )
     await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
 
@@ -77,20 +153,28 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or "Unknown"
     args = context.args
     
+    get_or_create_user(user_id, username)
+    check_weekly_reset(user_id)
+    
     if args and args[0].isdigit():
         referrer_id = int(args[0])
         if referrer_id != user_id:  # Prevent self-referral
+            get_or_create_user(referrer_id, "Unknown")
             check_weekly_reset(referrer_id)
-            users[referrer_id]["joins"] += 1
+            with db_pool.getconn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO referrals (referrer_id, referred_id, join_time)
+                        VALUES (%s, %s, %s)
+                    """, (referrer_id, user_id, datetime.now(pytz.UTC)))
+                    cur.execute("UPDATE users SET joins = joins + 1 WHERE user_id = %s", (referrer_id,))
+                    conn.commit()
+                db_pool.putconn(conn)
     
-    check_weekly_reset(user_id)
-    users[user_id]["username"] = username
-    
-    # Show dashboard
-    affiliate_link = f"https://t.me/Affiliate_xforiumbot?start={user_id}"
+    affiliate_link = f"https://t.me/xForium?start={user_id}"
     welcome_message = (
         f"Welcome to the bot!\n"
-        f"Your personal affiliate link: {affiliate_link}"
+        f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}"
     )
     await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
 
@@ -99,14 +183,15 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    get_or_create_user(user_id, query.from_user.username or "Unknown")
     check_weekly_reset(user_id)
 
     if query.data == "joins":
-        joins = users[user_id]["joins"]
+        joins, balance, username = get_user_data(user_id)
         tier, earnings = get_user_tier_earnings(joins)
         message = (
             f"👤 Joins\n\n"
-            f"You have {joins} joins.\n"
+            f"You have {joins} joins to {CHANNEL_ID}.\n"
             f"Rank: {tier}\n"
             f"Earnings: £{earnings:.2f}\n\n"
             f"Joins reset every week.\n"
@@ -124,34 +209,59 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(message, reply_markup=get_back_keyboard())
 
     elif query.data == "leaderboard":
-        # Get top 5 users by joins
-        top_users = sorted(users.items(), key=lambda x: x[1]["joins"], reverse=True)[:5]
-        leaderboard = [f"{i+1}) {user[1]['username']} - {user[1]['joins']}" 
-                       for i, user in enumerate(top_users)]
+        with db_pool.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT username, joins FROM users ORDER BY joins DESC LIMIT 5")
+                top_users = cur.fetchall()
+            db_pool.putconn(conn)
+        leaderboard = [f"{i+1}) {user[0]} - {user[1]}" for i, user in enumerate(top_users)]
         message = (
             f"🥇 Leaderboard\n\n"
-            f"Top 5 joins:\n" + "\n".join(leaderboard or ["No data yet"]) +
+            f"Top 5 joins to {CHANNEL_ID}:\n" + "\n".join(leaderboard or ["No data yet"]) +
             f"\n\nAppear on the top 5 leaderboard for a bonus at the end of the week!"
         )
         await query.message.reply_text(message, reply_markup=get_back_keyboard())
 
     elif query.data == "balance":
-        balance = users[user_id]["balance"]
+        joins, balance, username = get_user_data(user_id)
         message = f"💰 You have a balance of £{balance:.2f} ready to payout."
         await query.message.reply_text(message, reply_markup=get_balance_keyboard())
+
+    elif query.data == "request_payout":
+        joins, balance, username = get_user_data(user_id)
+        if balance <= 0:
+            await query.message.reply_text("You do not have balance to payout.", reply_markup=get_balance_keyboard())
+        else:
+            with db_pool.getconn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO payouts (user_id, amount, request_time)
+                        VALUES (%s, %s, %s)
+                    """, (user_id, balance, datetime.now(pytz.UTC)))
+                    cur.execute("UPDATE users SET balance = 0 WHERE user_id = %s", (user_id,))
+                    conn.commit()
+                db_pool.putconn(conn)
+            await context.bot.send_message(
+                chat_id=MANAGER_ID,
+                text=(
+                    f"Payout Request:\n"
+                    f"User: @{username} (ID: {user_id})\n"
+                    f"Amount: £{balance:.2f}"
+                )
+            )
+            await query.message.reply_text("Payout request submitted! You will be contacted soon.", reply_markup=get_balance_keyboard())
 
     elif query.data == "support":
         message = f"📞 Contact our affiliate manager: {AFFILIATE_MANAGER}"
         await query.message.reply_text(message, reply_markup=get_back_keyboard())
 
-    elif query.data == "request_payout":
-        # Placeholder for payout logic
-        await query.message.reply_text("Payout request submitted! (Placeholder)", reply_markup=get_balance_keyboard())
-
     elif query.data == "back":
         await query.message.reply_text("Back to dashboard", reply_markup=get_dashboard_keyboard())
 
 def main():
+    # Initialize database
+    init_db()
+    
     application = Application.builder().token(TOKEN).build()
 
     # Handlers
@@ -159,12 +269,12 @@ def main():
     application.add_handler(CommandHandler("start", handle_referral, filters=filters.Regex(r"^\d+$")))
     application.add_handler(CallbackQueryHandler(button))
 
-    # Start webhook for Render
+    # Start webhook
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8443)),
         url_path=TOKEN,
-        webhook_url=f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/{TOKEN}"
+        webhook_url=f"https://my-telegram-bot-qqbx.onrender.com/{TOKEN}"
     )
 
 if __name__ == "__main__":
