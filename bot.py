@@ -14,7 +14,7 @@ from psycopg2 import pool
 
 # Bot token and settings
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE")
-AFFILIATE_MANAGER = "@sidsid101"  # Your Telegram handle for support
+AFFILIATE_MANAGER = "@xfAffliateManger"  # Client's Telegram handle for support
 MANAGER_ID = "7553301979"  # Your Telegram ID for payout notifications
 CHANNEL_ID = "@xForium"
 ADMINS = [7553301979, 7677838863]  # Your ID and client's ID
@@ -72,16 +72,13 @@ def get_or_create_user(user_id, username):
                 user = cur.fetchone()
                 if not user:
                     now = datetime.now(pytz.UTC)
-                    balance = 10.0 if user_id == 7553301979 else 0.0  # Test balance for @sidsid101
                     cur.execute("""
                         INSERT INTO users (user_id, username, joins, balance, last_reset)
                         VALUES (%s, %s, %s, %s, %s)
-                    """, (user_id, username, 0, balance, now))
+                    """, (user_id, username, 0, 0.0, now))
                     conn.commit()
                 else:
                     cur.execute("UPDATE users SET username = %s WHERE user_id = %s", (username, user_id))
-                    if user_id == 7553301979:
-                        cur.execute("UPDATE users SET balance = 10.0 WHERE user_id = %s", (user_id,))
                     conn.commit()
             db_pool.putconn(conn)
     except Exception as e:
@@ -136,7 +133,7 @@ def get_dashboard_keyboard():
         [InlineKeyboardButton("📊 Tier System", callback_data="tier_system")],
         [InlineKeyboardButton("🥇 Leaderboard", callback_data="leaderboard")],
         [InlineKeyboardButton("💰 Balance", callback_data="balance")],
-        [InlineKeyboardButton("📞 Support", callback_data="support")]
+        [InlineKeyboardButton("📞 Support", callback_data="support", url="https://t.me/xfAffliateManger")]
     ])
 
 def get_back_keyboard():
@@ -149,24 +146,6 @@ def get_balance_keyboard():
         [InlineKeyboardButton("Request Payout", callback_data="request_payout")],
         [InlineKeyboardButton("⬅ Back", callback_data="back")]
     ])
-
-async def reset_all_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in ADMINS:
-        await update.message.reply_text("You are not authorized to use this command.")
-        return
-    try:
-        with db_pool.getconn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM payouts")
-                cur.execute("DELETE FROM referrals")
-                cur.execute("DELETE FROM users")
-                conn.commit()
-            db_pool.putconn(conn)
-        await update.message.reply_text("All user data and leaderboard have been reset successfully.")
-    except Exception as e:
-        print(f"Error in reset_all_users: {e}")
-        await update.message.reply_text("Error resetting data.")
 
 async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -366,11 +345,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text("Payout request submitted! You will be contacted soon.", reply_markup=get_balance_keyboard())
 
         elif query.data == "support":
-            message = f"📞 Contact our affiliate manager: {AFFILIATE_MANAGER}"
-            await query.message.reply_text(message, reply_markup=get_back_keyboard())
-
-        elif query.data == "back":
-            await query.message.reply_text("Back to dashboard", reply_markup=get_dashboard_keyboard())
+            await query.message.reply_text(f"📞 Contact our affiliate manager: {AFFILIATE_MANAGER}", reply_markup=get_back_keyboard())
     except Exception as e:
         print(f"Error in button: {e}")
         await query.message.reply_text("Oops, something went wrong! Please try again later.")
@@ -384,7 +359,6 @@ def main():
     application.add_handler(CommandHandler("viewusers", view_users))
     application.add_handler(CommandHandler("viewreferrals", view_referrals))
     application.add_handler(CommandHandler("viewpayouts", view_payouts))
-    application.add_handler(CommandHandler("resetallusers", reset_all_users))
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8443)),
