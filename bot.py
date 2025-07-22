@@ -266,7 +266,7 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
             f"Please join {CHANNEL_ID} to start earning referrals!"
         )
-        await update.message.reply_text(welcome_message, reply-markup=get_dashboard_keyboard())
+        await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
     except Exception as e:
         print(f"Error in handle_referral: {e}")
         await update.message.reply_text("Oops, something went wrong! Please try again later.")
