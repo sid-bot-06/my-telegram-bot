@@ -14,8 +14,8 @@ from psycopg2 import pool
 
 # Bot token and settings
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE")
-AFFILIATE_MANAGER = "@xfAffliateManger"  # Client's Telegram handle
-MANAGER_ID = "7677838863"  # Client's Telegram ID
+AFFILIATE_MANAGER = "@sidsid101"  # Your Telegram handle for support
+MANAGER_ID = "7553301979"  # Your Telegram ID for payout notifications
 CHANNEL_ID = "@xForium"
 ADMINS = [7553301979, 7677838863]  # Your ID and client's ID
 
@@ -147,6 +147,22 @@ def get_balance_keyboard():
         [InlineKeyboardButton("⬅ Back", callback_data="back")]
     ])
 
+async def reset_leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        await update.message.reply_text("You are not authorized to use this command.")
+        return
+    try:
+        with db_pool.getconn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE users SET joins = 0")
+                conn.commit()
+            db_pool.putconn(conn)
+        await update.message.reply_text("Leaderboard has been reset successfully.")
+    except Exception as e:
+        print(f"Error in reset_leaderboard: {e}")
+        await update.message.reply_text("Error resetting leaderboard.")
+
 async def view_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
@@ -222,6 +238,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         get_or_create_user(user_id, username)
         check_weekly_reset(user_id)
+        # Add test balance for your account
+        if user_id == 7553301979:
+            with db_pool.getconn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE users SET balance = 10.0 WHERE user_id = %s", (user_id,))
+                    conn.commit()
+                db_pool.putconn(conn)
         affiliate_link = f"https://t.me/xForium?start={user_id}"
         welcome_message = (
             f"Welcome to the bot!\n"
@@ -241,6 +264,13 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         get_or_create_user(user_id, username)
         check_weekly_reset(user_id)
+        # Add test balance for your account
+        if user_id == 7553301979:
+            with db_pool.getconn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE users SET balance = 10.0 WHERE user_id = %s", (user_id,))
+                    conn.commit()
+                db_pool.putconn(conn)
         
         if args and args[0].isdigit():
             referrer_id = int(args[0])
@@ -363,6 +393,7 @@ def main():
     application.add_handler(CommandHandler("viewusers", view_users))
     application.add_handler(CommandHandler("viewreferrals", view_referrals))
     application.add_handler(CommandHandler("viewpayouts", view_payouts))
+    application.add_handler(CommandHandler("resetleaderboard", reset_leaderboard))
     application.run_webhook(
         listen="0.0.0.0",
         port=int(os.getenv("PORT", 8443)),
