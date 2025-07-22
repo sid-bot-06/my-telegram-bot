@@ -228,7 +228,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
             f"Please join {CHANNEL_ID} to start earning referrals!"
         )
-        await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
+        try:
+            await update.message.edit_text(welcome_message, reply_markup=get_dashboard_keyboard())
+        except:
+            await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
     except Exception as e:
         print(f"Error in start: {e}")
         await update.message.reply_text("Oops, something went wrong! Please try again later.")
@@ -266,7 +269,10 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
             f"Please join {CHANNEL_ID} to start earning referrals!"
         )
-        await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
+        try:
+            await update.message.edit_text(welcome_message, reply_markup=get_dashboard_keyboard())
+        except:
+            await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
     except Exception as e:
         print(f"Error in handle_referral: {e}")
         await update.message.reply_text("Oops, something went wrong! Please try again later.")
@@ -290,7 +296,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Joins reset every week.\n"
                 f"Your earnings will be added to your balance once the week is over."
             )
-            await query.message.reply_text(message, reply_markup=get_back_keyboard())
+            await query.message.edit_text(message, reply_markup=get_back_keyboard())
 
         elif query.data == "tier_system":
             message = (
@@ -299,7 +305,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Tier 2: Reach 50 invites\n£1.50 per member\n\n"
                 f"Tier 3: Reach 100 invites\n£2.00 per member"
             )
-            await query.message.reply_text(message, reply_markup=get_back_keyboard())
+            await query.message.edit_text(message, reply_markup=get_back_keyboard())
 
         elif query.data == "leaderboard":
             with db_pool.getconn() as conn:
@@ -313,17 +319,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Top 5 joins to {CHANNEL_ID}:\n" + "\n".join(leaderboard or ["No data yet"]) +
                 f"\n\nAppear on the top 5 leaderboard for a bonus at the end of the week!"
             )
-            await query.message.reply_text(message, reply_markup=get_back_keyboard())
+            await query.message.edit_text(message, reply_markup=get_back_keyboard())
 
         elif query.data == "balance":
             joins, balance, username = get_user_data(user_id)
             message = f"💰 You have a balance of £{balance:.2f} ready to payout."
-            await query.message.reply_text(message, reply_markup=get_balance_keyboard())
+            await query.message.edit_text(message, reply_markup=get_balance_keyboard())
 
         elif query.data == "request_payout":
             joins, balance, username = get_user_data(user_id)
             if balance <= 0:
-                await query.message.reply_text("You do not have balance to payout.", reply_markup=get_balance_keyboard())
+                await query.message.edit_text("You do not have balance to payout.", reply_markup=get_balance_keyboard())
             else:
                 with db_pool.getconn() as conn:
                     with conn.cursor() as cur:
@@ -342,13 +348,22 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"Amount: £{balance:.2f}"
                     )
                 )
-                await query.message.reply_text("Payout request submitted! You will be contacted soon.", reply_markup=get_balance_keyboard())
+                await query.message.edit_text("Payout request submitted! You will be contacted soon.", reply_markup=get_balance_keyboard())
 
         elif query.data == "support":
-            await query.message.reply_text(f"📞 Contact our affiliate manager: {AFFILIATE_MANAGER}", reply_markup=get_back_keyboard())
+            await query.message.edit_text(f"📞 Contact our affiliate manager: {AFFILIATE_MANAGER}", reply_markup=get_back_keyboard())
+
+        elif query.data == "back":
+            affiliate_link = f"https://t.me/xForium?start={user_id}"
+            message = (
+                f"Welcome back to the dashboard!\n"
+                f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
+                f"Please join {CHANNEL_ID} to start earning referrals!"
+            )
+            await query.message.edit_text(message, reply_markup=get_dashboard_keyboard())
     except Exception as e:
         print(f"Error in button: {e}")
-        await query.message.reply_text("Oops, something went wrong! Please try again later.")
+        await query.message.edit_text("Oops, something went wrong! Please try again later.")
 
 def main():
     init_db()
