@@ -14,10 +14,10 @@ from psycopg2 import pool
 
 # Bot token and settings
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7850825321:AAHxoPdkBCfDxlz95_1q3TqEw-YAVb2w5gE")
-AFFILIATE_MANAGER = "@xfAffliateManger"  # Client's Telegram handle for support
-MANAGER_ID = "7677838863"  # Client's Telegram ID for payout notifications
+AFFILIATE_MANAGER = "@xfAffliateManger"
+MANAGER_ID = "7677838863"
 CHANNEL_ID = "@xForium"
-ADMINS = [7553301979, 7677838863]  # Your ID and client's ID
+ADMINS = [7553301979, 7677838863]
 
 # Database connection pool
 db_pool = None
@@ -129,11 +129,17 @@ def get_user_data(user_id):
 
 def get_dashboard_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("👤 Joins", callback_data="joins")],
-        [InlineKeyboardButton("📊 Tier System", callback_data="tier_system")],
-        [InlineKeyboardButton("🥇 Leaderboard", callback_data="leaderboard")],
-        [InlineKeyboardButton("💰 Balance", callback_data="balance")],
-        [InlineKeyboardButton("📞 Support", callback_data="support", url="https://t.me/xfAffliateManger")]
+        [
+            InlineKeyboardButton("👤 Joins", callback_data="joins"),
+            InlineKeyboardButton("📊 Tier System", callback_data="tier_system")
+        ],
+        [
+            InlineKeyboardButton("🥇 Leaderboard", callback_data="leaderboard"),
+            InlineKeyboardButton("💰 Balance", callback_data="balance")
+        ],
+        [
+            InlineKeyboardButton("📞 Support", callback_data="support", url="https://t.me/xfAffliateManger")
+        ]
     ])
 
 def get_back_keyboard():
@@ -222,12 +228,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         get_or_create_user(user_id, username)
         check_weekly_reset(user_id)
-        affiliate_link = f"https://t.me/xForium?start={user_id}"
-        welcome_message = (
-            f"Welcome to the bot!\n"
-            f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
-            f"Please join {CHANNEL_ID} to start earning referrals!"
-        )
+        welcome_message = "🖥️ Your Dashboard"
         try:
             await update.message.edit_text(welcome_message, reply_markup=get_dashboard_keyboard())
         except:
@@ -247,7 +248,7 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if args and args[0].isdigit():
             referrer_id = int(args[0])
-            if referrer_id != user_id:  # Prevent self-referral
+            if referrer_id != user_id:
                 get_or_create_user(referrer_id, "Unknown")
                 check_weekly_reset(referrer_id)
                 with db_pool.getconn() as conn:
@@ -263,18 +264,23 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             conn.commit()
                     db_pool.putconn(conn)
         
-        affiliate_link = f"https://t.me/xForium?start={user_id}"
-        welcome_message = (
-            f"Welcome to the bot!\n"
-            f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
-            f"Please join {CHANNEL_ID} to start earning referrals!"
-        )
+        welcome_message = "🖥️ Your Dashboard"
         try:
             await update.message.edit_text(welcome_message, reply_markup=get_dashboard_keyboard())
         except:
             await update.message.reply_text(welcome_message, reply_markup=get_dashboard_keyboard())
     except Exception as e:
         print(f"Error in handle_referral: {e}")
+        await update.message.reply_text("Oops, something went wrong! Please try again later.")
+
+async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    try:
+        affiliate_link = f"https://t.me/xForium?start={user_id}"
+        message = f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}"
+        await update.message.reply_text(message)
+    except Exception as e:
+        print(f"Error in get_link: {e}")
         await update.message.reply_text("Oops, something went wrong! Please try again later.")
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -354,12 +360,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.edit_text(f"📞 Contact our affiliate manager: {AFFILIATE_MANAGER}", reply_markup=get_back_keyboard())
 
         elif query.data == "back":
-            affiliate_link = f"https://t.me/xForium?start={user_id}"
-            message = (
-                f"Welcome back to the dashboard!\n"
-                f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}\n\n"
-                f"Please join {CHANNEL_ID} to start earning referrals!"
-            )
+            message = "🖥️ Your Dashboard"
             await query.message.edit_text(message, reply_markup=get_dashboard_keyboard())
     except Exception as e:
         print(f"Error in button: {e}")
@@ -370,6 +371,7 @@ def main():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start, filters=~filters.Regex(r"^\d+$")))
     application.add_handler(CommandHandler("start", handle_referral, filters=filters.Regex(r"^\d+$")))
+    application.add_handler(CommandHandler("link", get_link))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(CommandHandler("viewusers", view_users))
     application.add_handler(CommandHandler("viewreferrals", view_referrals))
