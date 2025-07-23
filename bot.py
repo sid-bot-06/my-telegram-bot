@@ -273,14 +273,14 @@ async def handle_referral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error in handle_referral: {e}")
         await update.message.reply_text("Oops, something went wrong! Please try again later.")
 
-async def get_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     try:
         affiliate_link = f"https://t.me/xForium?start={user_id}"
         message = f"Your personal affiliate link to join {CHANNEL_ID}: {affiliate_link}"
         await update.message.reply_text(message)
     except Exception as e:
-        print(f"Error in get_link: {e}")
+        print(f"Error in get_new: {e}")
         await update.message.reply_text("Oops, something went wrong! Please try again later.")
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -371,7 +371,7 @@ def main():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start, filters=~filters.Regex(r"^\d+$")))
     application.add_handler(CommandHandler("start", handle_referral, filters=filters.Regex(r"^\d+$")))
-    application.add_handler(CommandHandler("link", get_link))
+    application.add_handler(CommandHandler("new", get_new))
     application.add_handler(CallbackQueryHandler(button))
     application.add_handler(CommandHandler("viewusers", view_users))
     application.add_handler(CommandHandler("viewreferrals", view_referrals))
